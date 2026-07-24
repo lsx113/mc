@@ -1,0 +1,29 @@
+# Build outputs
+x64/
+Debug/
+Release/
+*.obj
+*.cso
+*.pdb
+*.ilk
+*.lib
+*.exp
+*.exe
+*.log
+
+# User-specific files
+*.user
+imgui.ini
+
+# Third-party libraries
+DirectXTK-main/
+ImGui/
+1/
+
+# Assets (not source code)
+DDS/
+model/
+music/
+png/
+world/
+
