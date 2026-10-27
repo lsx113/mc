@@ -26,7 +26,6 @@ void Shader::init(ID3D11Device* device, ID3D11DeviceContext* context,float aspec
     m_viewMatrix = XMMatrixIdentity();
     init_view_proj_buffer();
     init_skybox();
-    init_donut();
     init_block();
     init_character();
     init_sw();
@@ -132,13 +131,12 @@ void Shader::drawall() {
         m_context->IASetIndexBuffer(m_Indexbuffer_skybox.Get(), DXGI_FORMAT_R32_UINT, 0);
         m_context->DrawIndexed(36, 0, 0);
         // 恢复默认光栅化状态
-        m_context->RSSetState(nullptr);
+        //m_context->RSSetState(nullptr);
         drallblock();//绘制方块
         draw_particles();//绘制粒子
-        draw_donut();//绘制甜甜圈
         drawcharacter();//绘制人物
-        //drawsw();
-        //drawnpc(); 
+        drawsw();
+        drawnpc(); 
         render_minimap(); // 渲染小地图到纹理
         draw_minimap(); // 绘制小地图
 
@@ -1313,106 +1311,4 @@ void Shader::draw_particles() {
     m_context->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
     m_context->OMSetDepthStencilState(nullptr, 0);
     m_context->GSSetShader(nullptr, nullptr, 0);
-}
-
-void Shader::init_donut() {
-    //编译着色器
-    ComPtr<ID3DBlob> vsBlob, hsBlob, dsBlob, psBlob;
-    HR(CreateShaderFromFile(L"HLSL\\vs_donut.cso", L"HLSL\\vs_donut.hlsl", "main", "vs_5_0", vsBlob.GetAddressOf()));
-    HR(m_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, m_vertexShader_donut.GetAddressOf()));
-    HR(CreateShaderFromFile(L"HLSL\\ps_donut.cso", L"HLSL\\ps_donut.hlsl", "main", "ps_5_0", psBlob.GetAddressOf()));
-    HR(m_device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, m_pixelShader_donut.GetAddressOf()));
-    HR(CreateShaderFromFile(L"HLSL\\HullShader.cso", L"HLSL\\HullShader.hlsl", "main", "hs_5_0", hsBlob.GetAddressOf()));
-    HR(m_device->CreateHullShader(hsBlob->GetBufferPointer(), hsBlob->GetBufferSize(), nullptr, m_hullShader_donut.GetAddressOf()));
-    HR(CreateShaderFromFile(L"HLSL\\DomainShader.cso", L"HLSL\\DomainShader.hlsl", "main", "ds_5_0", dsBlob.GetAddressOf()));
-    HR(m_device->CreateDomainShader(dsBlob->GetBufferPointer(), dsBlob->GetBufferSize(), nullptr, m_domainShader_donut.GetAddressOf()));
-    //创建反射接口
-    D3DReflect(
-        vsBlob->GetBufferPointer(),    // 字节码数据指针
-        vsBlob->GetBufferSize(),       // 字节码数据大小
-        IID_ID3D11ShaderReflection,     // 指定要获取的接口类型[reference:2]
-        (void**)&m_shaderReflection_donut // 输出反射接口指针
-    );
-    std::vector<D3D11_INPUT_ELEMENT_DESC> inputLayoutDesc;//输入布局描述符
-    //获取着色器输入参数描述符
-    D3D11_SHADER_DESC shaderDesc;
-    m_shaderReflection_donut->GetDesc(&shaderDesc);
-    for (int i = 0; i < shaderDesc.InputParameters; ++i) {
-        D3D11_SIGNATURE_PARAMETER_DESC paramDesc;
-        m_shaderReflection_donut->GetInputParameterDesc(i, &paramDesc);
-        D3D11_INPUT_ELEMENT_DESC elementDesc = {};
-        elementDesc.SemanticName = paramDesc.SemanticName;
-        elementDesc.SemanticIndex = paramDesc.SemanticIndex;
-        elementDesc.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-        elementDesc.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-        if (paramDesc.Mask == 1) {
-            elementDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        }
-        else if (paramDesc.Mask <= 3) {
-            elementDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
-        }
-        else if (paramDesc.Mask <= 7) {
-            elementDesc.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-        }
-        else if (paramDesc.Mask <= 15) {
-            elementDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-        }
-        inputLayoutDesc.push_back(elementDesc);
-    }
-    HR(m_device->CreateInputLayout(inputLayoutDesc.data(), (UINT)inputLayoutDesc.size(),
-        vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), m_inputLayout_donut.GetAddressOf()));//创建输入布局
-    //  填充描述结构体
-    D3D11_RASTERIZER_DESC wireframeDesc;
-    ZeroMemory(&wireframeDesc, sizeof(wireframeDesc));
-
-    wireframeDesc.FillMode = D3D11_FILL_WIREFRAME;  // 线框模式
-    wireframeDesc.CullMode = D3D11_CULL_NONE;       // 关闭背面剔除（双面渲染）
-    wireframeDesc.FrontCounterClockwise = FALSE;    // 默认顺时针为正面（DX标准）
-    wireframeDesc.DepthBias = 0;
-    wireframeDesc.SlopeScaledDepthBias = 0.0f;
-    wireframeDesc.DepthBiasClamp = 0.0f;
-    wireframeDesc.DepthClipEnable = TRUE;           // 启用深度裁剪（保持正常遮挡）
-    wireframeDesc.ScissorEnable = FALSE;            // 关闭剪切矩形
-    wireframeDesc.MultisampleEnable = FALSE;        // 关闭多重采样（线框下通常关闭，如需反走样可开）
-    wireframeDesc.AntialiasedLineEnable = FALSE;    // 关闭线框抗锯齿
-    HR(m_device->CreateRasterizerState(&wireframeDesc, m_rasterizerState_donut.GetAddressOf()));
-    //创建顶点缓冲区
-    XMFLOAT4 center;
-    XMFLOAT4 roller;
-    center = XMFLOAT4(5.0f, 5.0f, 5.0f, 3.0f);
-    roller = XMFLOAT4(0.0f, 1.0f, 0.0f, 8.0f);
-    Ver_donut vertices[1] = { { center, roller } };
-    D3D11_BUFFER_DESC bd = {};
-    bd.Usage = D3D11_USAGE_DEFAULT;
-    bd.ByteWidth = sizeof(vertices);
-    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA initData = { vertices };
-    HR(m_device->CreateBuffer(&bd, &initData, m_vertexBuffer_donut.GetAddressOf()));
-}
-
-void Shader::draw_donut() {
-    m_context->DSSetConstantBuffers(0, 1, m_viewProjBuffer.GetAddressOf());//绑定常量缓冲区
-    // 设置管线状态
-    m_context->IASetInputLayout(m_inputLayout_donut.Get());
-    m_context->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST);
-    //设置着色器
-    m_context->VSSetShader(m_vertexShader_donut.Get(), nullptr, 0);
-    m_context->HSSetShader(m_hullShader_donut.Get(), nullptr, 0);
-    m_context->DSSetShader(m_domainShader_donut.Get(), nullptr, 0);
-    m_context->PSSetShader(m_pixelShader_donut.Get(), nullptr, 0);
-    //设置顶点缓冲区
-    UINT stride = sizeof(Ver_donut);
-    UINT offset = 0;
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer_donut.GetAddressOf(), &stride, &offset);
-    //设置光栅化状态为线框模式
-    m_context->RSSetState(m_rasterizerState_donut.Get());
-    m_context->Draw(1, 0); // 绘制一个控制点
-    //设置光栅化状态回到默认
-    m_context->RSSetState(nullptr);
-    // 1. 解绑 Hull Shader 和 Domain Shader
-    m_context->HSSetShader(nullptr, nullptr, 0);
-    m_context->DSSetShader(nullptr, nullptr, 0);
-
-    // 2. 将拓扑结构恢复为后续代码期望的三角形列表
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }

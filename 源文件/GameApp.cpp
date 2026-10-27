@@ -61,7 +61,6 @@ void GameApp::UpdateScene(float dt)
                 ismouseshow= !ismouseshow;
                 EventBus::Publish<event::showbag>(event::showbag(isbagshow));
             }
-
             if (!isbagshow) {
                 Shader::daytime += dt;
                 m_bag.Update();

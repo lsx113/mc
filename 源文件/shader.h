@@ -8,12 +8,6 @@ struct VertexPosUV
 	static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
 };
 
-struct Ver_donut
-{
-	XMFLOAT4 center;
-	XMFLOAT4 roller;
-};
-
 struct VertexPos
 {
 	XMFLOAT3 pos;
@@ -214,17 +208,6 @@ public:
 	void render_minimap();                           // 渲染场景到小地图
 	void draw_minimap();                             // 在右上角绘制小地图
 	// ...
-	//甜甜圈
-	ComPtr<ID3D11Buffer> m_vertexBuffer_donut; // 甜甜圈顶点缓冲区
-	ComPtr<ID3D11InputLayout> m_inputLayout_donut; // 甜甜圈输入布局
-	ComPtr<ID3D11VertexShader> m_vertexShader_donut; // 甜甜圈顶点着色器
-	ComPtr<ID3D11PixelShader> m_pixelShader_donut; // 甜甜圈像素着色器
-	ComPtr<ID3D11HullShader> m_hullShader_donut; // 甜甜圈曲面细分着色器
-	ComPtr<ID3D11DomainShader> m_domainShader_donut; // 甜甜圈域着色器
-	ComPtr<ID3D11RasterizerState> m_rasterizerState_donut; // 甜甜圈光栅化状态
-	ComPtr<ID3D11ShaderReflection> m_shaderReflection_donut; // 甜甜圈着色器反射接口
-	void init_donut(); // 初始化甜甜圈
-	void draw_donut(); // 绘制甜甜圈
 	//NPC
 	void drawnpc();//绘制NPC
 	//******//

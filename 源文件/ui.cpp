@@ -56,7 +56,7 @@ void ui::chooseworld() {
         else {
             HR(CreateDDSTextureFromFile(
                 m_device,
-                L"C:\\Users\\33304\\Desktop\\Minecraft\\DDS\\DDS\\panorama_0.dds",
+                L"DDS/DDS/panorama_0.dds",
                 nullptr,                           // 不需要 ID3D11Resource*
                 m_worldsrv.GetAddressOf(),         // 输出 SRV
                 0,                                 // maxsize (0 = 不限制)
@@ -206,7 +206,6 @@ void ui::creatworld(string s) {
         return;
     }
     int block[20][10][20] = { 0 };// 初始化世界数据（示例：全是空气）
-    /*
     for (int x = 0; x < 20; x++) {
         for (int y = 0; y < 10; y++) {
             for (int z = 0; z < 20; z++) {
@@ -214,7 +213,7 @@ void ui::creatworld(string s) {
                 if (y == 2) block[x][y][z] = 2;// 示例：第三层是草地
             }
         }
-    }*/
+    }
     worldfile.write(reinterpret_cast<const char*>(block), sizeof(block));// 将世界数据写入文件
     worldfile.close();
 }

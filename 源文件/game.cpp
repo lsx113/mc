@@ -677,10 +677,9 @@ void player::Update(float dt) {
     }
     static bool isjump = false;
     // ========== 重力 ==========
-
     if (!isjump) {
         XMFLOAT3 oldPos = m_transform_body.GetPosition();
-        m_transform_body.MoveUp(-speed * 0);
+        m_transform_body.MoveUp(-speed * dt);
         if (checkCollision(m_transform_body.GetPosition())) {
             m_transform_body.SetPosition(oldPos);
             isnablejump = true;
@@ -958,7 +957,7 @@ void Model::Init(ID3D11Device* device) {
     bool comInit = SUCCEEDED(hr) || hr == S_FALSE;
 
     // ===== 关键修改：使用宽字符路径支持中文 =====
-    const wchar_t* wFilePath = L"C:\\Users\\33304\\Desktop\\model\\妮露.pmx";
+    const wchar_t* wFilePath = L"model/妮露.pmx";
 
     // 转换为 UTF-8 供 Assimp 使用（Assimp 5.0+ 支持 UTF-8）
     std::string filePath = WstringToUtf8(wFilePath);

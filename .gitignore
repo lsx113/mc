@@ -1,29 +1,44 @@
-# Build outputs
-x64/
-Debug/
-Release/
+# ============ 构建产物 ============
+/x64/
+/Minecraft/x64/
 *.obj
-*.cso
+*.pch
 *.pdb
 *.ilk
-*.lib
-*.exp
-*.exe
+*.idb
+*.ipdb
+*.iobj
+*.tlog
+*.recipe
 *.log
+*.exe
+# .cso 由 CreateShaderFromFile 首次运行时从 .hlsl 自动编译生成
+*.cso
 
-# User-specific files
+# ============ IDE / 本地设置 ============
+.vs/
 *.user
+*.suo
 imgui.ini
 
-# Third-party libraries
-DirectXTK-main/
-ImGui/
-1/
+# ============ assimp：只保留工程编译需要的头文件与预编译库 ============
+# 完整的 assimp 源码 / CMake 构建树 / 运行时 DLL 不纳入版本库
+/1/*
+!/1/install/
+!/1/lib/
+/1/install/bin/
 
-# Assets (not source code)
-DDS/
-model/
-music/
-png/
-world/
-
+# ============ DirectXTK：只保留 Inc 与 x64 Debug 版 DirectXTK.lib ============
+/DirectXTK-main/*
+!/DirectXTK-main/DirectXTK-main/
+/DirectXTK-main/DirectXTK-main/*
+!/DirectXTK-main/DirectXTK-main/Inc/
+!/DirectXTK-main/DirectXTK-main/Bin/
+/DirectXTK-main/DirectXTK-main/Bin/*
+!/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/
+/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/*
+!/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/x64/
+/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/x64/*
+!/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/x64/Debug/
+/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/x64/Debug/*
+!/DirectXTK-main/DirectXTK-main/Bin/Desktop_2022/x64/Debug/DirectXTK.lib

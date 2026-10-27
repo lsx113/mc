@@ -1,0 +1,9 @@
+libdir=C:/Users/33304/Desktop/1/install/lib
+includedir=C:/Users/33304/Desktop/1/install/include
+
+Name: Assimp
+Description: Import various well-known 3D model formats in an uniform manner.
+Version: 5.2.0
+Libs: -L${libdir} -lassimp
+Libs.private:  
+Cflags: -I${includedir}
