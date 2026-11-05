@@ -118,14 +118,14 @@ void Shader::update_light(float dt) {
 	float sunZ = 0.6f;
 
 	//XMVECTOR lightDir = XMVectorSet(sunX, sunY, sunZ, 0.0f);
-    XMVECTOR lightDir = XMVectorSet(0.8, 0.8, 0.6, 0.0);
+    XMVECTOR lightDir = XMVectorSet(0.8f, 0.8f, 0.6f, 0.0f);
 	lightDir = XMVector3Normalize(lightDir);
 	// 存的是「光从太阳射向场景」的方向：正午 y 为负，与固定光照那版一致
 	XMStoreFloat3(&m_lightDir, XMVectorNegate(lightDir));
 
 	// 判断是否为白天（光源方向 Y 分量 > 0）
 	bool isDay = (sunY > 0.0f);
-     m_daylightFactor = 0.8;
+     m_daylightFactor = 0.8f;
 	//m_daylightFactor = isDay ? sunY : 0.0f;// 随太阳高度变化
 }
 
