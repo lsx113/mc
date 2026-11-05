@@ -222,28 +222,23 @@ void Shader::update_shadow_matrices() {
     XMMATRIX invView = XMMatrixInverse(nullptr, m_viewMatrix);
     XMVECTOR lightTravel = XMVector3Normalize(XMLoadFloat3(&m_lightDir));
 
-    // 从投影矩阵反推 fov 与宽高比
-    float yScale = XMVectorGetY(m_projectionMatrix.r[1]);
-    float xScale = XMVectorGetX(m_projectionMatrix.r[0]);
-    float tanHalf = 1.0f / yScale;
-    float aspect = yScale / xScale;
-
     for (UINT c = 0; c < CSMcount; ++c) {
         float n = splits[c];
         float f = splits[c + 1];
 
-        float hNear = n * tanHalf, wNear = hNear * aspect;
-        float hFar = f * tanHalf, wFar = hFar * aspect;
+        // 用 DirectXCollision 的 BoundingFrustum 取这一段视锥的 8 个角点：
+        // 先用相机投影矩阵构造，把 Near/Far 改成这一段，再整体变到世界空间
+        BoundingFrustum frustum(m_projectionMatrix);
+        frustum.Near = n;
+        frustum.Far = f;
+        frustum.Transform(frustum, invView);       // 相机空间 → 世界空间
 
-        // 这一段视锥的 8 个角点（相机空间），再变到世界
-        XMVECTOR cs[8] = {
-            XMVectorSet(-wNear, -hNear, n, 1.0f), XMVectorSet(wNear, -hNear, n, 1.0f),
-            XMVectorSet(wNear,  hNear,  n, 1.0f), XMVectorSet(-wNear, hNear, n, 1.0f),
-            XMVectorSet(-wFar, -hFar,  f, 1.0f),  XMVectorSet(wFar, -hFar, f, 1.0f),
-            XMVectorSet(wFar,  hFar,   f, 1.0f),  XMVectorSet(-wFar, hFar, f, 1.0f),
-        };
+        XMFLOAT3 corners[8];
+        frustum.GetCorners(corners);
+
+        XMVECTOR cs[8];
         for (int k = 0; k < 8; ++k)
-            cs[k] = XMVector3TransformCoord(cs[k], invView);
+            cs[k] = XMLoadFloat3(&corners[k]);
 
         // 中心 = 8 点平均
         XMVECTOR center = XMVectorZero();
