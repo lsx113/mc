@@ -188,7 +188,6 @@ public:
     void init();
     void Update(float dt);
     std::vector<std::unique_ptr<EventBus::Subscription>> m_subscriptions;
-    XMFLOAT3 pos_npc;//npcŒª÷√
 };
  
 

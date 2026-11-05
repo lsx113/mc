@@ -52,7 +52,6 @@ namespace event {
     struct getobj { int type;getobj(int t) : type(t) {} };//获得物品事件，参数为物品类型
     struct putobj { int type;putobj(int t) : type(t) {} };//放置物品事件，参数为物品类型
     struct showbag { bool pad;showbag(bool p) : pad(p) {}  };//显示背包界面事件
-    struct npcdialog {bool show; npcdialog(bool s) : show(s) {} };//显示NPC对话事件
 }
 
 struct bagobj {
@@ -122,12 +121,6 @@ public:
     void showbag();
     vector<bagobj>* bagobjs;//背包物品列表
     //******//
-    //NPC对话界面******//
-    bool isshownpcdialog = false;//是否显示NPC提示对话界面
-    bool isshownpclog = false;//是否显示NPC对话内容界面
-    void shownpcdialog();
-    void shownpclog(int count);
-     //******//
 };
 
 #endif // UI_H

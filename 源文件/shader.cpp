@@ -27,7 +27,6 @@ void Shader::init(ID3D11Device* device, ID3D11DeviceContext* context,float aspec
     init_view_proj_buffer();
     init_skybox();
     init_block();
-    init_character();
     init_sw();
     init_minimap();
     init_particles();
@@ -367,7 +366,7 @@ void Shader::render_shadow_pass() {
             m_context->DrawIndexed(36, 0, 0);
         }
 
-        // --- 生物 + NPC ---
+        // --- 生物 ---
         if (!Model::girlmodel.empty()) {
             for (UINT si = 0; si < (UINT)sw::sws.size(); ++si) {
                 XMMATRIX world = sw::sws[si].m_transform.GetWorldMatrix();
@@ -383,18 +382,6 @@ void Shader::render_shadow_pass() {
                 }
             }
 
-            // NPC
-            XMMATRIX npcWorld = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(0.0f, 3.0f, 20.0f);
-            CBPerObject cbObj;
-            cbObj.world = XMMatrixTranspose(npcWorld);
-            cbObj.worldInvTranspose = cbObj.world;
-            m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-            m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
-            for (auto& mesh : Model::girlmodel) {
-                m_context->IASetVertexBuffers(0, 1, mesh.VertexBuffer.GetAddressOf(), &strideM, &offsetM);
-                m_context->IASetIndexBuffer(mesh.IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-                m_context->DrawIndexed(mesh.IndexCount, 0, 0);
-            }
         }
     }
 
@@ -442,9 +429,7 @@ void Shader::drawall() {
         //m_context->RSSetState(nullptr);
         drallblock();//绘制方块
         draw_particles();//绘制粒子
-        drawcharacter();//绘制人物
         drawsw();
-        drawnpc(); 
         render_minimap(); // 渲染小地图到纹理
         draw_minimap(); // 绘制小地图
 
@@ -839,170 +824,8 @@ void Shader::init_block() {
     cbd.ByteWidth = sizeof(CBPS);
     HR(m_device->CreateBuffer(&cbd, nullptr, m_cbPSBuffer.GetAddressOf()));
 }
-void Shader::init_character()
-{
-    // 定义辅助数组（在函数开头定义，供后面所有代码使用）
-    const XMFLOAT3 localPos[8] = {
-        {-1,-1, 1}, { 1,-1, 1}, { 1, 1, 1}, {-1, 1, 1},
-        {-1,-1,-1}, { 1,-1,-1}, { 1, 1,-1}, {-1, 1,-1}
-    };
-    const XMFLOAT3 faceNormals[6] = {
-        {0,0,1}, {0,0,-1}, {-1,0,0}, {1,0,0}, {0,1,0}, {0,-1,0}
-    };
-    const WORD faceIndices[6][6] = {
-        {0,1,2, 0,2,3}, // 前
-        {5,4,7, 5,7,6}, // 后
-        {4,0,3, 4,3,7}, // 左
-        {1,5,6, 1,6,2}, // 右
-        {3,2,6, 3,6,7}, // 上
-        {4,5,1, 4,1,0}  // 下
-    };
-    const XMFLOAT2 faceUV[4] = {
-        {0,1}, {0,0}, {1,0}, {1,1}
-    };
 
-    // 辅助结构体
-    struct TempVertex {
-        XMFLOAT3 pos;
-        XMFLOAT3 normal;
-        XMFLOAT2 uv;
-    };
 
-    // 辅助 lambda：添加立方体到指定容器
-    auto addCubeTo = [&](std::vector<TempVertex>& verts, std::vector<WORD>& idx,
-        const XMFLOAT3& extents, const XMFLOAT3& offset) {
-            WORD startIdx = (WORD)verts.size();
-            // 添加顶点
-            for (int i = 0; i < 8; ++i) {
-                TempVertex v;
-                v.pos.x = localPos[i].x * extents.x + offset.x;
-                v.pos.y = localPos[i].y * extents.y + offset.y;
-                v.pos.z = localPos[i].z * extents.z + offset.z;
-                v.normal = XMFLOAT3(0, 0, 0);
-                v.uv = XMFLOAT2(0, 0);
-                verts.push_back(v);
-            }
-            // 设置法线和UV，添加索引
-            for (int f = 0; f < 6; ++f) {
-                for (int i = 0; i < 4; ++i) {
-                    WORD vIdx = startIdx + faceIndices[f][i];
-                    verts[vIdx].normal = faceNormals[f];
-                    verts[vIdx].uv = faceUV[i];
-                }
-                for (int i = 0; i < 6; ++i) {
-                    idx.push_back(startIdx + faceIndices[f][i]);
-                }
-            }
-        };
-
-    // 1. 身体+左手（合并）
-    std::vector<TempVertex> bodyVerts;
-    std::vector<WORD> bodyIdx;
-    addCubeTo(bodyVerts, bodyIdx, XMFLOAT3(0.3f, 0.7f, 0.45f), XMFLOAT3(0, 0, 0)); // 身体
-    addCubeTo(bodyVerts, bodyIdx, XMFLOAT3(0.1f, 0.2f, 0.05f), XMFLOAT3(-0.4f, 0.5f, 0)); // 左手
-
-    // 创建身体+左手的顶点缓冲区和索引缓冲区
-    D3D11_BUFFER_DESC vbd = {};
-    vbd.Usage = D3D11_USAGE_DEFAULT;
-    vbd.ByteWidth = sizeof(VertexPosNormalTex) * (UINT)bodyVerts.size();
-    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA vInitData = { bodyVerts.data() };
-    HR(m_device->CreateBuffer(&vbd, &vInitData, m_vertexBuffer_character_body.GetAddressOf()));
-
-    D3D11_BUFFER_DESC ibd = {};
-    ibd.Usage = D3D11_USAGE_DEFAULT;
-    ibd.ByteWidth = sizeof(WORD) * (UINT)bodyIdx.size();
-    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA iInitData = { bodyIdx.data() };
-    HR(m_device->CreateBuffer(&ibd, &iInitData, m_indexBuffer_character_body.GetAddressOf()));
-
-    // 2. 右手（单独）
-    std::vector<TempVertex> handVerts;
-    std::vector<WORD> handIdx;
-    addCubeTo(handVerts, handIdx, XMFLOAT3(0.1f, 0.2f, 0.05f), XMFLOAT3(0, 0, 0));
-
-    vbd.ByteWidth = sizeof(VertexPosNormalTex) * (UINT)handVerts.size();
-    vInitData.pSysMem = handVerts.data();
-    HR(m_device->CreateBuffer(&vbd, &vInitData, m_vertexBuffer_character_hand.GetAddressOf()));
-
-    ibd.ByteWidth = sizeof(WORD) * (UINT)handIdx.size();
-    iInitData.pSysMem = handIdx.data();
-    HR(m_device->CreateBuffer(&ibd, &iInitData, m_indexBuffer_character_hand.GetAddressOf()));
-
-    // 3. 脚（一条腿）
-    std::vector<TempVertex> footVerts;
-    std::vector<WORD> footIdx;
-    // 腿的半长 (0.05, 0.3, 0.1)，中心偏移到上表面中心 (0, -0.3, 0)
-    addCubeTo(footVerts, footIdx, XMFLOAT3(0.05f, 0.3f, 0.1f), XMFLOAT3(0, -0.3f, 0));
-
-    vbd.ByteWidth = sizeof(VertexPosNormalTex) * (UINT)footVerts.size();
-    vInitData.pSysMem = footVerts.data();
-    HR(m_device->CreateBuffer(&vbd, &vInitData, m_vertexBuffer_character_foot.GetAddressOf()));
-
-    ibd.ByteWidth = sizeof(WORD) * (UINT)footIdx.size();
-    iInitData.pSysMem = footIdx.data();
-    HR(m_device->CreateBuffer(&ibd, &iInitData, m_indexBuffer_character_foot.GetAddressOf()));
-
-    // 加载纹理
-    HR(CreateDDSTextureFromFile(m_device, L"DDS/DDS/stone.dds", nullptr, m_characterSRV.GetAddressOf()));
-}
-
-void Shader::drawcharacter()
-{
-    if (!m_characterSRV) return;
-
-    // 设置公共资源
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_context->PSSetShaderResources(0, 1, m_characterSRV.GetAddressOf());
-    m_context->PSSetSamplers(0, 1, m_blockSamplerState.GetAddressOf()); // 复用方块采样器
-
-    // 绘制身体（包含左手）
-    UINT stride = sizeof(VertexPosNormalTex);
-    UINT offset = 0;
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer_character_body.GetAddressOf(), &stride, &offset);
-    m_context->IASetIndexBuffer(m_indexBuffer_character_body.Get(), DXGI_FORMAT_R16_UINT, 0);
-    // 设置世界矩阵（身体）
-    CBPerObject cbObj;
-    cbObj.world = XMMatrixTranspose(m_characterWorldMatrix_body);
-    cbObj.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, m_characterWorldMatrix_body));
-    m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-    m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
-    // 绘制（需要知道索引数量，这里从缓冲区描述获取，简单起见用已知值：每个立方体36索引，身体+左手共72索引）
-    // 由于合并了身体和左手，索引总数为 72
-    m_context->DrawIndexed(72, 0, 0);
-
-    // 绘制右手
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer_character_hand.GetAddressOf(), &stride, &offset);
-    m_context->IASetIndexBuffer(m_indexBuffer_character_hand.Get(), DXGI_FORMAT_R16_UINT, 0);
-    cbObj.world = XMMatrixTranspose(m_characterWorldMatrix_hand);
-    cbObj.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, m_characterWorldMatrix_hand));
-    m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-    m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
-    m_context->DrawIndexed(36, 0, 0); // 右手 36 索引
-
-    // 绘制左脚
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer_character_foot.GetAddressOf(), &stride, &offset);
-    m_context->IASetIndexBuffer(m_indexBuffer_character_foot.Get(), DXGI_FORMAT_R16_UINT, 0);
-    cbObj.world = XMMatrixTranspose(m_characterWorldMatrix_footleft);
-    cbObj.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, m_characterWorldMatrix_footleft));
-    m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-    m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
-    m_context->DrawIndexed(36, 0, 0); // 腿 36 索引
-
-    // 绘制右脚
-    cbObj.world = XMMatrixTranspose(m_characterWorldMatrix_footright);
-    cbObj.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, m_characterWorldMatrix_footright));
-    m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-    m_context->DrawIndexed(36, 0, 0);
-}
-
-void Shader::update_character_world_matrix(XMMATRIX hand, XMMATRIX body, XMMATRIX footleft, XMMATRIX footright)
-{
-    m_characterWorldMatrix_hand = hand;
-    m_characterWorldMatrix_body = body;
-    m_characterWorldMatrix_footleft = footleft;
-    m_characterWorldMatrix_footright = footright;
-}
 
 void Shader::drawdrop() {
     if (Drop::dropobjs.empty()) return;
@@ -1382,48 +1205,6 @@ void Shader::draw_minimap() {
     m_context->Draw(6, 0);
 }
 
-void Shader::drawnpc() {
-    if (Model::girlmodel.empty()) return;
-
-    // 此处假定 NPC 使用生物模型的着色器（vs_sw_model, ps_sw_model）
-    m_context->VSSetShader(m_vertexShader_swModel.Get(), nullptr, 0);
-    m_context->PSSetShader(m_pixelShader_swModel.Get(), nullptr, 0);
-    m_context->GSSetShader(nullptr, nullptr, 0);
-    m_context->IASetInputLayout(m_inputLayout_block.Get()); // 模型顶点格式与方块相同 (VertexPosNormalTex)
-
-    // 绑定每帧常量缓冲区 (b0: viewProj, b2: light/material)
-    m_context->VSSetConstantBuffers(0, 1, m_viewProjBuffer.GetAddressOf());
-    m_context->PSSetConstantBuffers(2, 1, m_cbPSBuffer.GetAddressOf());
-
-    // 采样器
-    m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-
-    // 绑定阴影资源：t4 贴图数组、s1 比较采样器、b4 光矩阵
-    m_context->PSSetShaderResources(4, 1, m_shadowSRV.GetAddressOf());
-    m_context->PSSetSamplers(1, 1, m_shadowSampler.GetAddressOf());
-    m_context->PSSetConstantBuffers(4, 1, m_cbshadowVP.GetAddressOf());
-
-    // 构建世界矩阵：缩放 0.1，平移到 (0, 3, 20)
-    XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) *
-        XMMatrixTranslation(0.0f, 3.0f, 20.0f);
-
-    // 更新常量缓冲区 b1 (CBPerObject)
-    CBPerObject cbObj;
-    cbObj.world = XMMatrixTranspose(world);
-    cbObj.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, world));
-    m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
-    m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
-
-    // 遍历所有网格并绘制
-    for (const auto& mesh : Model::girlmodel) {
-        UINT stride = sizeof(ModelVertex);
-        UINT offset = 0;
-        m_context->IASetVertexBuffers(0, 1, mesh.VertexBuffer.GetAddressOf(), &stride, &offset);
-        m_context->IASetIndexBuffer(mesh.IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        m_context->PSSetShaderResources(0, 1, mesh.TextureSRV.GetAddressOf());
-        m_context->DrawIndexed(mesh.IndexCount, 0, 0);
-    }
-}
 
 void Shader::init_particles() {
     D3D11_BUFFER_DESC bd = {};

@@ -31,10 +31,6 @@ void ui::Init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* context) {
     m_subscriptions.push_back(EventBus::Subscribe<event::showbag>([this](event::showbag e) {
         isshowbag = !isshowbag;
         }));// 订阅显示设置界面事件
-    m_subscriptions.push_back(EventBus::Subscribe<event::npcdialog>([this](event::npcdialog e) {
-        if(!isshownpclog&&isshownpcdialog!=e.show)
-            isshownpcdialog = e.show;
-        }));
 }
 
 ui::~ui() {
@@ -232,22 +228,6 @@ void ui::Render() {
     if (isshowbag) {
         showbag();
     }
-    if (isshownpcdialog) {
-        shownpcdialog();
-        if (Input::IsKeyPressed('G')) {
-            isshownpcdialog= false;
-            isshownpclog = true;
-        }
-    }
-    if (isshownpclog) {
-        static int logcount = 0;
-        if (Input::IsKeyPressed('F'))
-            logcount++;
-        shownpclog(logcount);
-        if (logcount == 4) {
-            logcount = 0;
-        }
-    }
      // 渲染 ImGui
 
 }
@@ -382,63 +362,4 @@ void ui::showbag() {
     ImGui::End();
 }
 
-void ui::shownpcdialog() {//显示提示框
-    ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-    ImVec2 windowSize(100, 40);
-    ImVec2 windowPos((displaySize.x - windowSize.x) * 0.5f, (displaySize.y - windowSize.y) * 0.7f);
-    ImGui::SetNextWindowPos(windowPos, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(windowSize, ImGuiCond_FirstUseEver);
-    ImGui::Begin(u8"按‘G’对话", nullptr,
-        ImGuiWindowFlags_NoResize |        // 禁止调整大小
-        ImGuiWindowFlags_NoMove |          // 禁止移动
-        ImGuiWindowFlags_NoCollapse        // 禁止折叠
-    );
-    ImGui::End();
-}
 
-void ui::shownpclog(int count) {//显示对话内容
-    ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-    ImVec2 windowSize(250, 120);
-    ImVec2 windowPos((displaySize.x - windowSize.x) * 0.5f, (displaySize.y - windowSize.y) * 0.7f);
-    ImGui::SetNextWindowPos(windowPos, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(windowSize, ImGuiCond_FirstUseEver);
-    ImGui::Begin(u8"与神明的对话（按F继续）", nullptr,
-        ImGuiWindowFlags_NoResize |        // 禁止调整大小
-        ImGuiWindowFlags_NoMove |          // 禁止移动
-        ImGuiWindowFlags_NoCollapse        // 禁止折叠
-    );
-    static bool found = false;
-    if(count==0)
-        ImGui::Text(u8"欢迎进入世界");
-    else if(count==1)
-        ImGui::Text(u8"你一定好奇为什么我没有血量");
-    else if(count==2)
-        ImGui::Text(u8"其实那些是我的分身");
-    else if (count == 3) {
-        ImGui::Text(u8"算了，给你些方块吧，去建筑世界");
-        if (!found) {
-            for (auto& pair : *bagobjs) {
-                if (pair.type == 1 && pair.count < 90) {
-                    pair.count += 10;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                for (auto& pair : *bagobjs) {
-                    if (pair.type == 0) {
-                        pair.type = 1;
-                        pair.count = 10;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        isshownpclog = false;
-        found = false;
-    }
-    ImGui::End();
-}

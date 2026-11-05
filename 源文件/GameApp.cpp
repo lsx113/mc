@@ -3,7 +3,6 @@
 #include "DXTrace.h"
 using namespace DirectX;
 
-
 GameApp::GameApp(HINSTANCE hInstance, const std::wstring& windowName, int initWidth, int initHeight)
     : D3DApp(hInstance, windowName, initWidth, initHeight), m_ui(m_pd3dDevice.Get()),m_camera(static_cast<float>(initWidth), static_cast<float>(initHeight))
 {
@@ -70,13 +69,7 @@ void GameApp::UpdateScene(float dt)
                 m_sw.Update(dt);
                 m_shader.update_particles(dt);
                 m_shader.update_view(m_camera.GetViewMatrix(), m_camera.GetPosition());
-                m_shader.update_character_world_matrix(
-                    m_player.m_transform_hand.GetWorldMatrix(),   //  ÷
-                    m_player.m_transform_body.GetWorldMatrix(),   // …ÌÃÂ
-                    m_player.m_transform_foot_left.GetWorldMatrix(),
-                    m_player.m_transform_foot_right.GetWorldMatrix()
-                );
-            }
+                            }
         }
     }
     LockCursor();

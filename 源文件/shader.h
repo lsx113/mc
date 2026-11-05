@@ -180,22 +180,6 @@ public:
 	void init_block();//初始化方块
 	void drallblock();//绘制方块
 	const float daytimeCycle = 240.0f; // 一昼夜周期的持续时间（秒）
-	//****//
-	//绘制人物
-	ComPtr<ID3D11Buffer> m_vertexBuffer_character_foot;//脚顶点缓冲区
-	ComPtr<ID3D11Buffer> m_indexBuffer_character_foot;//脚索引缓冲区
-	ComPtr<ID3D11Buffer> m_vertexBuffer_character_body;//身体顶点缓冲区
-	ComPtr<ID3D11Buffer> m_indexBuffer_character_body;//身体索引缓冲区
-	ComPtr<ID3D11Buffer> m_vertexBuffer_character_hand;//手顶点缓冲区
-	ComPtr<ID3D11Buffer> m_indexBuffer_character_hand;//手索引缓冲区
-	ComPtr<ID3D11ShaderResourceView> m_characterSRV;//人物纹理资源视图
-	XMMATRIX m_characterWorldMatrix_hand;//人物手世界矩阵
-	XMMATRIX m_characterWorldMatrix_body;//人物身体世界矩阵
-	XMMATRIX m_characterWorldMatrix_footleft;//人物左脚世界矩阵
-	XMMATRIX m_characterWorldMatrix_footright;//人物右脚世界矩阵
-	void init_character();//初始化人物
-	void drawcharacter();//绘制人物
-	void update_character_world_matrix(XMMATRIX hand, XMMATRIX body, XMMATRIX footleft, XMMATRIX footright);//更新人物世界矩阵
 	void drawdrop();
 	//******//
 	//生物//
@@ -225,8 +209,6 @@ public:
 	void render_minimap();                           // 渲染场景到小地图
 	void draw_minimap();                             // 在右上角绘制小地图
 	// ...
-	//NPC
-	void drawnpc();//绘制NPC
 	//******//
 		// 粒子系统相关
 	void init_particles();                          // 初始化粒子系统资源

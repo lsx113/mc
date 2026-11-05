@@ -1407,8 +1407,6 @@ Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> Model::CreateSRVFromMemory(
 std::vector<swobj> sw::sws;
 
 void sw::init() {
-    //npc位置
-    pos_npc = XMFLOAT3(0.0f, 1.0f, 20.0f);
     // 随机生成 2 个生物
     for (int i = 0; i < 2; ++i) {
         swobj obj;
@@ -1455,15 +1453,6 @@ void sw::init() {
             }
         }
     ));
-    m_subscriptions.push_back(EventBus::Subscribe<event::setcamera>([this](const event::setcamera& e) {
-            float distance_npc= powf(pos_npc.x - e.pos.x, 2) + powf(pos_npc.y - e.pos.y, 2) + powf(pos_npc.z - e.pos.z, 2);
-            if (distance_npc < 16.0f) {
-                 EventBus::Publish<event::npcdialog>(event::npcdialog(true));
-            }
-            else {
-                 EventBus::Publish<event::npcdialog>(event::npcdialog(false));
-            }
-        }));
 }
 
 void sw::Update(float dt) {
