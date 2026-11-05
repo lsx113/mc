@@ -1,4 +1,5 @@
 #include "light.hlsli"
+#include "shadow.hlsli"
 
 Texture2D g_Tex : register(t0);
 SamplerState g_Sampler : register(s0);
@@ -35,10 +36,14 @@ float4 PS(VertexOut pin) : SV_Target
     float3 normal = normalize(pin.NormalW);
     float3 toEye = normalize(g_EyePosW - pin.PosW);
 
+    // 阴影
+    float viewDepth = length(pin.PosW - g_EyePosW);
+    float shadow = SampleShadow(pin.PosW, normal, viewDepth);
+
     float4 ambient, diffuse, spec;
     ComputeDirectionalLight(g_Material, g_DirLight, normal, toEye, ambient, diffuse, spec);
 
-    float4 litColor = texColor * (ambient + diffuse) + spec;
+    float4 litColor = texColor * (ambient + diffuse * shadow) + spec * shadow;
     litColor.a = g_Material.diffuse.a * texColor.a;
 
     // 雾效计算（与方块相同）

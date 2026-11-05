@@ -179,9 +179,15 @@
     <FxCompile Include="HLSL\ps_particle.hlsl">
       <Filter>HLSL</Filter>
     </FxCompile>
+    <FxCompile Include="HLSL\vs_shadow.hlsl">
+      <Filter>HLSL</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="HLSL\light.hlsli">
+      <Filter>HLSL</Filter>
+    </None>
+    <None Include="HLSL\shadow.hlsli">
       <Filter>HLSL</Filter>
     </None>
   </ItemGroup>

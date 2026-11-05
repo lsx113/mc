@@ -36,10 +36,5 @@ float4 PS(VSOutput pin) : SV_Target
     float3 dayColor = skyColor.rgb * brightness;
     float3 finalColor = lerp(dayColor * nightTint, dayColor, sunHeight);
     
-    // 4. 可选：增强日出/日落时的暖色调（当太阳接近地平线时）
-    float horizonGlow = sin(angle); // 早晚较高
-    float3 sunsetTint = float3(1.0f, 0.7f, 0.5f);
-    finalColor = lerp(finalColor, finalColor * sunsetTint, horizonGlow * 0.4f);
-    
     return float4(finalColor, skyColor.a);
 }

@@ -31,6 +31,7 @@ void Shader::init(ID3D11Device* device, ID3D11DeviceContext* context,float aspec
     init_sw();
     init_minimap();
     init_particles();
+    init_shadow();
     //创建时间缓冲区
     D3D11_BUFFER_DESC bd = {};
     bd.Usage = D3D11_USAGE_DEFAULT;
@@ -103,6 +104,309 @@ void Shader::update_view(XMMATRIX view, XMFLOAT3 pos) {
         daytime = 0.0f;
 }
 
+void Shader::update_light(float dt) {
+	daytime += dt;
+	if (daytime > daytimeCycle)
+		daytime = 0.0f;
+
+	// 根据 daytime 计算光照方向
+	const float dayLength = daytimeCycle;// 一天周期（秒）
+	float angle = (daytime / dayLength) * XM_2PI;// 0 ~ 2π
+
+	// 光源绕 XZ 平面旋转，Y 轴代表高度。夜晚时 sunY < 0 表示光源在地平线下
+	float sunY = cosf(angle);// 1 (正午) → -1 (午夜)
+	float sunX = sinf(angle) * 0.8f;// 水平旋转
+	float sunZ = 0.6f;
+
+	//XMVECTOR lightDir = XMVectorSet(sunX, sunY, sunZ, 0.0f);
+    XMVECTOR lightDir = XMVectorSet(0.8, 0.8, 0.6, 0.0);
+	lightDir = XMVector3Normalize(lightDir);
+	// 存的是「光从太阳射向场景」的方向：正午 y 为负，与固定光照那版一致
+	XMStoreFloat3(&m_lightDir, XMVectorNegate(lightDir));
+
+	// 判断是否为白天（光源方向 Y 分量 > 0）
+	bool isDay = (sunY > 0.0f);
+     m_daylightFactor = 0.8;
+	//m_daylightFactor = isDay ? sunY : 0.0f;// 随太阳高度变化
+}
+
+void Shader::init_shadow() {
+    // 1. 一张纹理数组，4 个 slice
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = kShadowSize;
+    td.Height = kShadowSize;
+    td.MipLevels = 1;
+    td.ArraySize = CSMcount;
+    td.Format = DXGI_FORMAT_R32_TYPELESS;
+    td.SampleDesc.Count = 1;
+    td.SampleDesc.Quality = 0;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    td.CPUAccessFlags = 0;
+    td.MiscFlags = 0;
+    HR(m_device->CreateTexture2D(&td, nullptr, m_shadowtexture.GetAddressOf()));
+
+    // 2. 每级联一个 DSV
+    for (UINT i = 0; i < CSMcount; ++i) {
+        D3D11_DEPTH_STENCIL_VIEW_DESC dd = {};
+        dd.Format = DXGI_FORMAT_D32_FLOAT;
+        dd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+        dd.Flags = 0;
+        dd.Texture2DArray.MipSlice = 0;
+        dd.Texture2DArray.FirstArraySlice = i;
+        dd.Texture2DArray.ArraySize = 1;
+        HR(m_device->CreateDepthStencilView(m_shadowtexture.Get(), &dd, m_shadowDSV[i].GetAddressOf()));
+    }
+
+    // 3. 一个 SRV 看全部 slice
+    D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+    sd.Format = DXGI_FORMAT_R32_FLOAT;
+    sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    sd.Texture2DArray.MostDetailedMip = 0;
+    sd.Texture2DArray.MipLevels = 1;
+    sd.Texture2DArray.FirstArraySlice = 0;
+    sd.Texture2DArray.ArraySize = CSMcount;
+    HR(m_device->CreateShaderResourceView(m_shadowtexture.Get(), &sd, m_shadowSRV.GetAddressOf()));
+
+    // 4. 比较采样器：硬件 2x2 比较 + 双线性
+    D3D11_SAMPLER_DESC samp = {};
+    samp.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
+    samp.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+    samp.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+    samp.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+    samp.BorderColor[0] = 1.0f;
+    samp.BorderColor[1] = 1.0f;
+    samp.BorderColor[2] = 1.0f;
+    samp.BorderColor[3] = 1.0f;
+    samp.MinLOD = 0;
+    samp.MaxLOD = D3D11_FLOAT32_MAX;
+    samp.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+    HR(m_device->CreateSamplerState(&samp, m_shadowSampler.GetAddressOf()));
+
+    // 5. 阴影 pass 光栅化状态：带深度偏移
+    D3D11_RASTERIZER_DESC rs = {};
+    rs.FillMode = D3D11_FILL_SOLID;
+    rs.CullMode = D3D11_CULL_BACK;
+    rs.FrontCounterClockwise = FALSE;
+    rs.DepthBias = 200;
+    rs.DepthBiasClamp = 0.0f;
+    rs.SlopeScaledDepthBias = 1.5f;
+    rs.DepthClipEnable = TRUE;
+    rs.ScissorEnable = FALSE;
+    rs.MultisampleEnable = FALSE;
+    rs.AntialiasedLineEnable = FALSE;
+    HR(m_device->CreateRasterizerState(&rs, m_shadowRS.GetAddressOf()));
+
+    // 6. 常量缓冲区 b4
+    D3D11_BUFFER_DESC cbd = {};
+    cbd.Usage = D3D11_USAGE_DEFAULT;
+    cbd.ByteWidth = sizeof(CBShadow);
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = 0;
+    HR(m_device->CreateBuffer(&cbd, nullptr, m_cbshadowVP.GetAddressOf()));
+
+    // 7. 阴影顶点着色器 + 输入布局
+    ComPtr<ID3DBlob> blob;
+    HR(CreateShaderFromFile(L"HLSL\\vs_shadow.cso", L"HLSL\\vs_shadow.hlsl", "VS", "vs_5_0", blob.GetAddressOf()));
+    HR(m_device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_shadowVS.GetAddressOf()));
+    HR(m_device->CreateInputLayout(VertexPos::inputLayout, ARRAYSIZE(VertexPos::inputLayout),
+        blob->GetBufferPointer(), blob->GetBufferSize(), m_shadowLayout.GetAddressOf()));
+}
+
+void Shader::update_shadow_matrices() {
+    // 级联分割：从相机到阴影最远距离，单位是世界单位
+    // 级联 0 覆盖 0.1~10，其余三级一直到相机 far=1000
+    const float splits[CSMcount + 1] = { 0.1f, 10.0f, 100.0f, 500.0f, 1000.0f };
+    for (int i = 0; i <= CSMcount; ++i)
+        m_CascadePartitionsPercentage[i] = splits[i];
+
+    XMMATRIX invView = XMMatrixInverse(nullptr, m_viewMatrix);
+    XMVECTOR lightTravel = XMVector3Normalize(XMLoadFloat3(&m_lightDir));
+
+    // 从投影矩阵反推 fov 与宽高比
+    float yScale = XMVectorGetY(m_projectionMatrix.r[1]);
+    float xScale = XMVectorGetX(m_projectionMatrix.r[0]);
+    float tanHalf = 1.0f / yScale;
+    float aspect = yScale / xScale;
+
+    for (UINT c = 0; c < CSMcount; ++c) {
+        float n = splits[c];
+        float f = splits[c + 1];
+
+        float hNear = n * tanHalf, wNear = hNear * aspect;
+        float hFar = f * tanHalf, wFar = hFar * aspect;
+
+        // 这一段视锥的 8 个角点（相机空间），再变到世界
+        XMVECTOR cs[8] = {
+            XMVectorSet(-wNear, -hNear, n, 1.0f), XMVectorSet(wNear, -hNear, n, 1.0f),
+            XMVectorSet(wNear,  hNear,  n, 1.0f), XMVectorSet(-wNear, hNear, n, 1.0f),
+            XMVectorSet(-wFar, -hFar,  f, 1.0f),  XMVectorSet(wFar, -hFar, f, 1.0f),
+            XMVectorSet(wFar,  hFar,   f, 1.0f),  XMVectorSet(-wFar, hFar, f, 1.0f),
+        };
+        for (int k = 0; k < 8; ++k)
+            cs[k] = XMVector3TransformCoord(cs[k], invView);
+
+        // 中心 = 8 点平均
+        XMVECTOR center = XMVectorZero();
+        for (int k = 0; k < 8; ++k)
+            center = XMVectorAdd(center, cs[k]);
+        center = XMVectorScale(center, 1.0f / 8.0f);
+
+        // 直径 = 8 点两两最大距离，与相机朝向无关
+        float diameter = 0.0f;
+        for (int a = 0; a < 8; ++a)
+            for (int b = a + 1; b < 8; ++b) {
+                float d = XMVectorGetX(XMVector3Length(XMVectorSubtract(cs[a], cs[b])));
+                if (d > diameter) diameter = d;
+            }
+
+        // 光空间：眼睛沿光线退到盒子外，距离随盒子边长自适应
+        // （固定 100 时，边长超过 200 的级联会算出负的 near，矩阵非法）
+        const float dist = diameter + 10.0f;
+        XMVECTOR up = fabsf(XMVectorGetY(lightTravel)) > 0.99f
+            ? XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)
+            : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        XMVECTOR eye = XMVectorSubtract(center, XMVectorScale(lightTravel, dist));
+        XMMATRIX lightView = XMMatrixLookAtLH(eye, center, up);
+
+        // 正交投影：边长 = 直径，深度覆盖整个球
+        XMMATRIX lightProj = XMMatrixOrthographicLH(diameter, diameter,
+            dist - diameter * 0.5f, dist + diameter * 0.5f);
+
+        XMMATRIX shadowMat = lightView * lightProj;
+
+        // texel 吸附：把世界原点对齐到纹素中心，否则纹素网格会随相机滑动
+        // 此时 center 在光空间恒为 (0,0,dist)，吸它没有意义，要吸的是「世界原点」
+        XMVECTOR origin = XMVector4Transform(XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f), shadowMat);
+        origin = XMVectorScale(origin, (float)kShadowSize * 0.5f);          // NDC → 纹理空间
+        XMVECTOR offset = XMVectorSubtract(XMVectorRound(origin), origin);  // 差几个纹素
+        offset = XMVectorScale(offset, 2.0f / (float)kShadowSize);          // 纹理空间 → NDC
+        offset = XMVectorSetZ(offset, 0.0f);
+        offset = XMVectorSetW(offset, 0.0f);
+        shadowMat.r[3] = XMVectorAdd(shadowMat.r[3], offset);
+
+        m_lightVP[c] = XMMatrixTranspose(shadowMat);
+    }
+}
+
+void Shader::render_shadow_pass() {
+    if (Block::boundmap.empty() && sw::sws.empty())
+        return;
+
+    // 1. 保存主 pass 的渲染目标、深度、视口、光栅化状态
+    ID3D11RenderTargetView* oldRTV = nullptr;
+    ID3D11DepthStencilView* oldDSV = nullptr;
+    m_context->OMGetRenderTargets(1, &oldRTV, &oldDSV);
+
+    D3D11_VIEWPORT oldVP;
+    UINT numVP = 1;
+    m_context->RSGetViewports(&numVP, &oldVP);
+
+    ID3D11RasterizerState* oldRS = nullptr;
+    m_context->RSGetState(&oldRS);
+
+    // 2. 解绑阴影 SRV，避免和 DSV 冲突
+    ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
+    m_context->PSSetShaderResources(4, 1, nullSRV);
+
+    // 3. 纯深度 pass
+    m_context->PSSetShader(nullptr, nullptr, 0);
+    m_context->VSSetShader(m_shadowVS.Get(), nullptr, 0);
+    m_context->IASetInputLayout(m_shadowLayout.Get());
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_context->RSSetState(m_shadowRS.Get());
+    m_context->OMSetDepthStencilState(m_pBlockDSS.Get(), 0);
+
+    D3D11_VIEWPORT svp = { 0.0f, 0.0f, (float)kShadowSize, (float)kShadowSize, 0.0f, 1.0f };
+    m_context->RSSetViewports(1, &svp);
+
+    CBShadow cb = {};
+    for (UINT i = 0; i < CSMcount; ++i)
+        cb.lightVP[i] = m_lightVP[i];
+    cb.cascadeSplit = XMFLOAT4(m_CascadePartitionsPercentage[1], m_CascadePartitionsPercentage[2],
+                               m_CascadePartitionsPercentage[3], m_CascadePartitionsPercentage[4]);
+    cb.shadowParams = XMFLOAT4(1.0f / (float)kShadowSize, 0.0f, 0.0f, 0.0f);
+
+    UINT strideB = sizeof(VertexPosNormalTex), offsetB = 0;
+    UINT strideM = sizeof(ModelVertex), offsetM = 0;
+    XMVECTOR camPos = XMLoadFloat3(&eyePos);
+
+    for (UINT c = 0; c < CSMcount; ++c) {
+        m_context->OMSetRenderTargets(0, nullptr, m_shadowDSV[c].Get());
+        m_context->ClearDepthStencilView(m_shadowDSV[c].Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+        cb.cascadeIndex = c;
+        m_context->UpdateSubresource(m_cbshadowVP.Get(), 0, nullptr, &cb, 0, 0);
+        m_context->VSSetConstantBuffers(4, 1, m_cbshadowVP.GetAddressOf());
+
+        // --- 方块 ---
+        m_context->IASetVertexBuffers(0, 1, m_Vertexbuffer_block.GetAddressOf(), &strideB, &offsetB);
+        m_context->IASetIndexBuffer(m_Indexbuffer_block.Get(), DXGI_FORMAT_R32_UINT, 0);
+
+        for (auto& entry : Block::boundmap) {
+            int bx = std::get<0>(entry.first);
+            int by = std::get<1>(entry.first);
+            int bz = std::get<2>(entry.first);
+            if (Block::block[bx][by][bz] == 0)
+                continue;
+
+            // 只在当前级联覆盖的范围内画
+            // 投射者可能远在接收者之后（斜射时影子长度可达高差的 1.7 倍），
+            // 所以剔除阈值放宽到该级远平面的 2 倍，否则影子边缘会成片消失
+            const XMFLOAT3& bc = entry.second.Center;
+            float d = XMVectorGetX(XMVector3Length(XMLoadFloat3(&bc) - camPos));
+            if (d > m_CascadePartitionsPercentage[c + 1] * 2.0f)
+                continue;
+
+            XMMATRIX world = XMMatrixTranslation(bc.x, bc.y, bc.z);
+            CBPerObject cbObj;
+            cbObj.world = XMMatrixTranspose(world);
+            cbObj.worldInvTranspose = cbObj.world;
+            m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
+            m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
+            m_context->DrawIndexed(36, 0, 0);
+        }
+
+        // --- 生物 + NPC ---
+        if (!Model::girlmodel.empty()) {
+            for (UINT si = 0; si < (UINT)sw::sws.size(); ++si) {
+                XMMATRIX world = sw::sws[si].m_transform.GetWorldMatrix();
+                CBPerObject cbObj;
+                cbObj.world = XMMatrixTranspose(world);
+                cbObj.worldInvTranspose = cbObj.world;
+                m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
+                m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
+                for (auto& mesh : Model::girlmodel) {
+                    m_context->IASetVertexBuffers(0, 1, mesh.VertexBuffer.GetAddressOf(), &strideM, &offsetM);
+                    m_context->IASetIndexBuffer(mesh.IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+                    m_context->DrawIndexed(mesh.IndexCount, 0, 0);
+                }
+            }
+
+            // NPC
+            XMMATRIX npcWorld = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(0.0f, 3.0f, 20.0f);
+            CBPerObject cbObj;
+            cbObj.world = XMMatrixTranspose(npcWorld);
+            cbObj.worldInvTranspose = cbObj.world;
+            m_context->UpdateSubresource(m_cbPerObjectBuffer.Get(), 0, nullptr, &cbObj, 0, 0);
+            m_context->VSSetConstantBuffers(1, 1, m_cbPerObjectBuffer.GetAddressOf());
+            for (auto& mesh : Model::girlmodel) {
+                m_context->IASetVertexBuffers(0, 1, mesh.VertexBuffer.GetAddressOf(), &strideM, &offsetM);
+                m_context->IASetIndexBuffer(mesh.IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+                m_context->DrawIndexed(mesh.IndexCount, 0, 0);
+            }
+        }
+    }
+
+    // 4. 恢复主 pass 状态
+    m_context->OMSetRenderTargets(1, &oldRTV, oldDSV);
+    m_context->RSSetViewports(1, &oldVP);
+    if (oldRS) m_context->RSSetState(oldRS);
+    if (oldRTV) oldRTV->Release();
+    if (oldDSV) oldDSV->Release();
+    if (oldRS) oldRS->Release();
+}
+
 void Shader::drawall() {
     if (isshowcover) {
         m_context->Draw(6, 0);
@@ -110,6 +414,10 @@ void Shader::drawall() {
     else {
         //更新视图投影矩阵
         CBcamera cb;
+        // 阴影：先算 4 个级联的光矩阵，再渲染阴影贴图
+        update_shadow_matrices();
+        render_shadow_pass();
+
         XMMATRIX viewNoTranslate = m_viewMatrix;
         viewNoTranslate.r[3] = XMVectorSet(0, 0, 0, 1);  // 清除平移
         XMMATRIX vp = viewNoTranslate * m_projectionMatrix;
@@ -311,26 +619,18 @@ void Shader::drallblock() {
     // 着色器
     m_context->VSSetShader(m_vertexShader_block.Get(), nullptr, 0);
     m_context->PSSetShader(m_pixelShader_block.Get(), nullptr, 0);
+    // 绑定阴影资源：t4 贴图数组、s1 比较采样器、b4 光矩阵
+    m_context->PSSetShaderResources(4, 1, m_shadowSRV.GetAddressOf());
+    m_context->PSSetSamplers(1, 1, m_shadowSampler.GetAddressOf());
+    m_context->PSSetConstantBuffers(4, 1, m_cbshadowVP.GetAddressOf());
+
     // ========== 2. 设置像素着色器常量缓冲区（槽位2） ==========
     CBPS cbPS;
     memset(&cbPS, 0, sizeof(cbPS));
 
-    // 根据 daytime 计算光照方向
-    const float dayLength = daytimeCycle;                  // 一天周期（秒）
-    float angle = (daytime / dayLength) * XM_2PI;   // 0 ~ 2π
-
-    // 光源绕 XZ 平面旋转，Y 轴代表高度。夜晚时 sunY < 0 表示光源在地平线下
-    float sunY = cosf(angle);           // 1 (正午) → -1 (午夜)
-    float sunX = sinf(angle) * 0.8f;    // 水平旋转
-    float sunZ = 0.6f;
-
-    XMVECTOR lightDir = XMVectorSet(sunX, sunY, sunZ, 0.0f);
-    lightDir = XMVector3Normalize(lightDir);
-    XMStoreFloat3(&cbPS.dirLight.direction, lightDir);
-
-    // 判断是否为白天（光源方向 Y 分量 > 0）
-    bool isDay = (sunY > 0.0f);
-    float daylightFactor = isDay ? sunY : 0.0f;  // 随太阳高度变化
+    // 光照方向与白天强度由 update_light() 每帧算好
+    cbPS.dirLight.direction = m_lightDir;
+    float daylightFactor = m_daylightFactor;
 
     // 环境光
     cbPS.dirLight.ambient = XMFLOAT4(
@@ -822,6 +1122,11 @@ void Shader::drawsw() {
     // 采样器
     m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
+    // 绑定阴影资源：t4 贴图数组、s1 比较采样器、b4 光矩阵
+    m_context->PSSetShaderResources(4, 1, m_shadowSRV.GetAddressOf());
+    m_context->PSSetSamplers(1, 1, m_shadowSampler.GetAddressOf());
+    m_context->PSSetConstantBuffers(4, 1, m_cbshadowVP.GetAddressOf());
+
     for (auto& obj : sw::sws) {
         XMMATRIX world = obj.m_transform.GetWorldMatrix();
 
@@ -1092,6 +1397,11 @@ void Shader::drawnpc() {
 
     // 采样器
     m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+
+    // 绑定阴影资源：t4 贴图数组、s1 比较采样器、b4 光矩阵
+    m_context->PSSetShaderResources(4, 1, m_shadowSRV.GetAddressOf());
+    m_context->PSSetSamplers(1, 1, m_shadowSampler.GetAddressOf());
+    m_context->PSSetConstantBuffers(4, 1, m_cbshadowVP.GetAddressOf());
 
     // 构建世界矩阵：缩放 0.1，平移到 (0, 3, 20)
     XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) *

@@ -1,6 +1,7 @@
 #ifndef SHADER_H
 #define SHADER_H
 #include"game.h"
+#define CSMcount 4//级联数量
 struct VertexPosUV
 {
 	XMFLOAT3 pos;
@@ -99,9 +100,24 @@ struct ParticleVertex {
 	float    Padding[3];    // 填充到16字节对齐
 };
 
+// 阴影常量缓冲区（b4）
+struct CBShadow
+{
+    XMMATRIX lightVP[CSMcount];//4 个级联的光矩阵（已转置）
+    XMFLOAT4 cascadeSplit;//x~w = 第 1~4 级联的远平面距离
+    XMFLOAT4 shadowParams;//x=texelSize y=depthBias z=normalBias w=保留
+    UINT     cascadeIndex;//阴影 pass 当前画第几级联
+    UINT     pad[3];
+};
+
 class Shader {
 public:
 	static float daytime;
+	// 光照
+	XMFLOAT3 m_lightDir = XMFLOAT3(0.0f, 1.0f, 0.0f);//光照方向：normalize(sunX, sunY, sunZ)
+	float m_daylightFactor = 1.0f;//白天强度 0~1，夜晚为 0
+	float m_sunHeight = 1.0f;//太阳高度 -1~1，负数表示在地平线下
+	void update_light(float dt);//更新光照方向与强度，每帧调用
 	ComPtr<ID3D11Buffer> m_timecbbuffer;//时间缓冲区
 	void init(ID3D11Device* device, ID3D11DeviceContext* context,float as);// 初始化着色器
 	ComPtr<ID3D11SamplerState> m_samplerState;//采样器状态
@@ -130,6 +146,7 @@ public:
 	bool isfirstperson = true;//是否第一人称
 	void update_view(XMMATRIX view,XMFLOAT3 pos);//更新视图矩阵
 	XMMATRIX m_viewMatrix;//视图矩阵
+	XMMATRIX m_inview;//视图逆矩阵
 	XMMATRIX m_projectionMatrix;//投影矩阵
 	XMFLOAT3 eyePos;//相机位置
 	ComPtr<ID3D11Buffer> m_viewProjBuffer;//视图投影常量缓冲区
@@ -231,5 +248,21 @@ public:
 	ComPtr<ID3D11DepthStencilState> m_particleDSS;  // 禁用深度写入
 	ComPtr<ID3D11Buffer> m_cbEyePosBuffer;  // 仅包含相机位置
 	void drawall();
+
+	//阴影
+	void init_shadow();//初始化阴影资源
+	void update_shadow_matrices();//每帧计算 4 个级联的光矩阵
+	void render_shadow_pass();//渲染 4 张阴影贴图
+	static constexpr UINT kShadowSize = 1024;//阴影贴图边长（1024 x 1024）
+	ComPtr<ID3D11Texture2D> m_shadowtexture;//级联贴图
+	ComPtr<ID3D11DepthStencilView> m_shadowDSV[CSMcount];//每级联1个DSV
+	ComPtr<ID3D11ShaderResourceView> m_shadowSRV;        // 一个，看全部
+	float m_CascadePartitionsPercentage[CSMcount+1];//子视锥体分割位置
+	ComPtr<ID3D11Buffer> m_cbshadowVP;//光矩阵数组 + 级联分割 + 参数
+	ComPtr<ID3D11SamplerState>    m_shadowSampler;//比较采样器，SampleCmpLevelZero 用
+	ComPtr<ID3D11RasterizerState> m_shadowRS;//阴影 pass 光栅化状态，负责深度偏移
+	ComPtr<ID3D11VertexShader> m_shadowVS;//阴影 pass 顶点着色器
+	ComPtr<ID3D11InputLayout>  m_shadowLayout;//阴影 pass 输入布局，只用 POSITION
+	XMMATRIX m_lightVP[CSMcount];//CPU 侧缓存的光矩阵（已转置）
 };
 #endif // !SHADER_H

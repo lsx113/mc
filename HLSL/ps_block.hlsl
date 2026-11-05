@@ -1,4 +1,5 @@
 #include "light.hlsli"
+#include "shadow.hlsli"
 
 Texture2D g_BackgroundTexture : register(t0);
 SamplerState g_Sampler : register(s0);
@@ -37,6 +38,11 @@ float4 PS(VertexOut pIn) : SV_Target
     pIn.NormalW = normalize(pIn.NormalW);
     float3 toEyeW = normalize(g_EyePosW - pIn.PosW);
 
+    // 阴影：按视深度选级联，3x3 PCF
+    float viewDepth = length(pIn.PosW - g_EyePosW);
+    float shadow = SampleShadow(pIn.PosW, pIn.NormalW, viewDepth);
+
+
     // 光照计算
     float4 ambient, diffuse, spec;
     float4 A, D, S;
@@ -47,7 +53,7 @@ float4 PS(VertexOut pIn) : SV_Target
     diffuse += D;
     spec += S;
 
-    float4 litColor = Color * (ambient + diffuse) + spec;
+    float4 litColor = Color * (ambient + diffuse * shadow) + spec * shadow;
     litColor.a = g_Material.diffuse.a * Color.a;
 
     // ========== 线性雾效 ==========
