@@ -105,7 +105,6 @@ struct CBShadow
 {
     XMMATRIX lightVP[CSMcount];//4 个级联的光矩阵（已转置）
     XMFLOAT4 cascadeSplit;//x~w = 第 1~4 级联的远平面距离
-    XMFLOAT4 shadowParams;//x=texelSize y=depthBias z=normalBias w=保留
     UINT     cascadeIndex;//阴影 pass 当前画第几级联
     UINT     pad[3];
 };
@@ -235,7 +234,7 @@ public:
 	void init_shadow();//初始化阴影资源
 	void update_shadow_matrices();//每帧计算 4 个级联的光矩阵
 	void render_shadow_pass();//渲染 4 张阴影贴图
-	static constexpr UINT kShadowSize = 1024;//阴影贴图边长（1024 x 1024）
+	static constexpr UINT kShadowSize = 2048;//阴影贴图边长
 	ComPtr<ID3D11Texture2D> m_shadowtexture;//级联贴图
 	ComPtr<ID3D11DepthStencilView> m_shadowDSV[CSMcount];//每级联1个DSV
 	ComPtr<ID3D11ShaderResourceView> m_shadowSRV;        // 一个，看全部

@@ -117,16 +117,14 @@ void Shader::update_light(float dt) {
 	float sunX = sinf(angle) * 0.8f;// 水平旋转
 	float sunZ = 0.6f;
 
-	//XMVECTOR lightDir = XMVectorSet(sunX, sunY, sunZ, 0.0f);
-    XMVECTOR lightDir = XMVectorSet(0.8f, 0.8f, 0.6f, 0.0f);
+	XMVECTOR lightDir = XMVectorSet(sunX, sunY, sunZ, 0.0f);
 	lightDir = XMVector3Normalize(lightDir);
 	// 存的是「光从太阳射向场景」的方向：正午 y 为负，与固定光照那版一致
 	XMStoreFloat3(&m_lightDir, XMVectorNegate(lightDir));
 
 	// 判断是否为白天（光源方向 Y 分量 > 0）
 	bool isDay = (sunY > 0.0f);
-     m_daylightFactor = 0.8f;
-	//m_daylightFactor = isDay ? sunY : 0.0f;// 随太阳高度变化
+	m_daylightFactor = isDay ? sunY : 0.0f;// 随太阳高度变化
 }
 
 void Shader::init_shadow() {
@@ -255,7 +253,6 @@ void Shader::update_shadow_matrices() {
             }
 
         // 光空间：眼睛沿光线退到盒子外，距离随盒子边长自适应
-        // （固定 100 时，边长超过 200 的级联会算出负的 near，矩阵非法）
         const float dist = diameter + 10.0f;
         XMVECTOR up = fabsf(XMVectorGetY(lightTravel)) > 0.99f
             ? XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)
@@ -268,16 +265,6 @@ void Shader::update_shadow_matrices() {
             dist - diameter * 0.5f, dist + diameter * 0.5f);
 
         XMMATRIX shadowMat = lightView * lightProj;
-
-        // texel 吸附：把世界原点对齐到纹素中心，否则纹素网格会随相机滑动
-        // 此时 center 在光空间恒为 (0,0,dist)，吸它没有意义，要吸的是「世界原点」
-        XMVECTOR origin = XMVector4Transform(XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f), shadowMat);
-        origin = XMVectorScale(origin, (float)kShadowSize * 0.5f);          // NDC → 纹理空间
-        XMVECTOR offset = XMVectorSubtract(XMVectorRound(origin), origin);  // 差几个纹素
-        offset = XMVectorScale(offset, 2.0f / (float)kShadowSize);          // 纹理空间 → NDC
-        offset = XMVectorSetZ(offset, 0.0f);
-        offset = XMVectorSetW(offset, 0.0f);
-        shadowMat.r[3] = XMVectorAdd(shadowMat.r[3], offset);
 
         m_lightVP[c] = XMMatrixTranspose(shadowMat);
     }
@@ -319,7 +306,6 @@ void Shader::render_shadow_pass() {
         cb.lightVP[i] = m_lightVP[i];
     cb.cascadeSplit = XMFLOAT4(m_CascadePartitionsPercentage[1], m_CascadePartitionsPercentage[2],
                                m_CascadePartitionsPercentage[3], m_CascadePartitionsPercentage[4]);
-    cb.shadowParams = XMFLOAT4(1.0f / (float)kShadowSize, 0.0f, 0.0f, 0.0f);
 
     UINT strideB = sizeof(VertexPosNormalTex), offsetB = 0;
     UINT strideM = sizeof(ModelVertex), offsetM = 0;

@@ -9,18 +9,17 @@ cbuffer CBShadow : register(b4)
 {
     float4x4 g_lightVP[4];   // 每个级联的光空间视图投影矩阵（已转置）
     float4   g_cascadeSplit; // x~w = 第 1~4 级联的远平面距离
-    float4   g_shadowParams; // x=texelSize y=depthBias z=normalBias
     uint     g_cascadeIndex; // 阴影 pass 当前画第几个级联
     uint3    g_cascadePad;
 };
 
-// 按视深度选级联：统计越过几个分割点
-int SelectCascade(float viewDepth)
+// 按视空间 z 选级联：统计越过几个分割点
+int SelectCascade(float viewZ)
 {
     int c = 0;
     [unroll]
     for (int i = 0; i < 4; ++i)
-        c += (viewDepth >= g_cascadeSplit[i]) ? 1 : 0;
+        c += (viewZ >= g_cascadeSplit[i]) ? 1 : 0;
     return min(c, 3);
 }
 
@@ -34,7 +33,7 @@ float CascadeBoundary(int i)
 }
 
 // 单级联采样：一次硬件比较，内部是 2x2 双线性 PCF
-float SampleOneCascade(float3 posW, float3 normalW, int c)
+float SampleOneCascade(float3 posW, int c)
 {
     // 不做任何位置/深度偏移
     float4 sp = mul(float4(posW, 1.0f), g_lightVP[c]);
@@ -53,20 +52,20 @@ float SampleOneCascade(float3 posW, float3 normalW, int c)
 }
 
 // 返回 0（全阴影）~ 1（全亮）
-float SampleShadow(float3 posW, float3 normalW, float viewDepth)
+float SampleShadow(float3 posW, float viewZ)
 {
-    int c = SelectCascade(viewDepth);
-    float lit = SampleOneCascade(posW, normalW, c);
+    int c = SelectCascade(viewZ);
+    float lit = SampleOneCascade(posW, c);
 
     // 级联边界前后 10% 的过渡带里，和上一级混合，消除硬切
     if (c > 0)
     {
         float boundary = CascadeBoundary(c - 1);
         float band = max(boundary * 0.1f, 0.05f);
-        if (viewDepth < boundary + band)
+        if (viewZ < boundary + band)
         {
-            float t = saturate((viewDepth - (boundary - band)) / (2.0f * band));
-            float litPrev = SampleOneCascade(posW, normalW, c - 1);
+            float t = saturate((viewZ - (boundary - band)) / (2.0f * band));
+            float litPrev = SampleOneCascade(posW, c - 1);
             lit = lerp(litPrev, lit, t);
         }
     }

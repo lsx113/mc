@@ -54,7 +54,7 @@
 | b1  | 每物体世界矩阵 + 逆转置       | 每物体    |
 | b2  | 光源 + 材质 + 眼点        | 每帧     |
 | b3  | 昼夜时间                | 每帧     |
-| b4  | 阴影：4 级光矩阵 + 分割 + 参数 | 每帧     |
+| b4 | 阴影：4 级光矩阵 + 级联分割 + 当前级联索引 | 每帧 |
 
 ### 1.3 资源槽位
 
@@ -348,12 +348,12 @@ GS 扩成 0.8 × 0.15 的矩形（公告牌基同粒子，只是不是正方形�
 
 ### 5.4 采样与级联混合
 
-    int SelectCascade(float viewDepth) {
+    int SelectCascade(float viewZ) {
         int c = 0;
-        [unroll] for (int i = 0; i < 4; ++i) c += (viewDepth >= g_cascadeSplit[i]);
+        [unroll] for (int i = 0; i < 4; ++i) c += (viewZ >= g_cascadeSplit[i]);
         return min(c, 3);
     }
-    
+
     float SampleOneCascade(float3 posW, int c) {
         float4 sp = mul(float4(posW, 1), g_lightVP[c]);
         float2 uv = float2(sp.x*0.5f + 0.5f, 0.5f - sp.y*0.5f);
@@ -363,6 +363,16 @@ GS 扩成 0.8 × 0.15 的矩形（公告牌基同粒子，只是不是正方形�
 
 - **硬件 PCF**：SampleCmpLevelZero 一次调用 = 2×2 四个纹素比较 + 双线性，等效 4 次比较一条指令；
 - **级联混合**：边界前后 10% 的过渡带里同时采两级做 lerp，消除硬切。
+
+**为什么按视深 z 选级，而不是径向距离**
+
+级联盒子是按视深切片 z ∈ [n, f] 建的。如果用 length(PosW - eye) 当判据，屏幕角落的像素径向可达视深的 1.55 倍（fov 60°、宽高比 1.78），会被分到更远的级联，投影落到那一级盒子之外——uv 越界，表现是屏幕边缘的阴影突然消失。
+
+改成视深 z 后，选级判据和盒子切片完全一致，任何被选中的像素必然落在盒子内，越界判断退化成数值安全网。
+
+视深 z 不需要额外的常量缓冲：透视投影下 SV_POSITION.w = 1/w_clip，而 w_clip 就是视空间 z，所以一行就够：
+
+    float viewZ = 1.0f / pIn.PosH.w;
 
 ### 5.5 当前实际生效的只有级联 0
 

@@ -36,9 +36,9 @@ float4 PS(VertexOut pin) : SV_Target
     float3 normal = normalize(pin.NormalW);
     float3 toEye = normalize(g_EyePosW - pin.PosW);
 
-    // 阴影
-    float viewDepth = length(pin.PosW - g_EyePosW);
-    float shadow = SampleShadow(pin.PosW, normal, viewDepth);
+    // 阴影：按视空间 z 选级联
+    float viewZ = 1.0f / pin.PosH.w;
+    float shadow = SampleShadow(pin.PosW, viewZ);
 
     float4 ambient, diffuse, spec;
     ComputeDirectionalLight(g_Material, g_DirLight, normal, toEye, ambient, diffuse, spec);

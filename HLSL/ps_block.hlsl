@@ -38,9 +38,10 @@ float4 PS(VertexOut pIn) : SV_Target
     pIn.NormalW = normalize(pIn.NormalW);
     float3 toEyeW = normalize(g_EyePosW - pIn.PosW);
 
-    // 阴影：按视深度选级联，3x3 PCF
-    float viewDepth = length(pIn.PosW - g_EyePosW);
-    float shadow = SampleShadow(pIn.PosW, pIn.NormalW, viewDepth);
+    // 阴影：按视空间 z 选级联（与级联盒子的切片一致，避免屏幕边缘选错级）
+    // 透视投影下 SV_POSITION.w = 1/w_clip，而 w_clip 就是视空间 z
+    float viewZ = 1.0f / pIn.PosH.w;
+    float shadow = SampleShadow(pIn.PosW, viewZ);
 
 
     // 光照计算
